@@ -18,7 +18,7 @@ BridgePhase is opening up a new convenience store and needs a Point-of-Sale syst
 
 ## Part 1. Inventory System
 
-Create a class `Inventory` that implements the methods in the `IInventory` interface. An `Inventory` contains a list of `Product`. Each `Product` contains `upc` (`String`), `name` (`String`), `wholesalePrice` (`BigDecimal`), `retailPrice` (`BigDecimal`), and `quantity` (`Integer`).  Add standard getter and setters `getName()`, `setName()`, etc to the `Product` class. 
+Create a class `Inventory` that implements the methods in the `IInventory` interface. An `Inventory` contains a list of `Product`. Each `Product` contains `upc` (`String`), `name` (`String`), `wholesalePrice` (`Number`), `retailPrice` (`Number`), and `quantity` (`Number`).  Add standard getter and setters `getName()`, `setName()`, etc to the `Product` class. 
 
 The `IInventory` interfaces supports the following **public** operations:
 
