@@ -6,7 +6,7 @@ This assignment consists of various steps, *at a mininum*, **commit your code at
 
 Class and method names that are specifically defined in this document must be exact (for example `Inventory`) and be placed under the `com.bridgephase.store` package. Any additional classes or methods that you require have no naming or package restrictions. Pay special attention to quality. Quality is more important than quantity in this exercise. If you are unable to complete all the tasks don't worry. 
 
-If you have any questions regarding any part of the exercise or are finished with the exercises, contact your BridgePhase representative for further direction. Your submission must be pushed to the Git server in order to be reviewed.
+If you have any questions or need clarifications regarding any part of the exercise, add an **Issue** under this project and a BridgPhase representative will respond to you. Your submission must be pushed to the Git server in order to be reviewed, inform a BridgePhase representative via email when you've completed the assignment.
 
 The project is already able to be imported into Eclipse, just use Eclipse to import it as an **Existing Project**. If you use another IDE, you should be able to import the `src/main/java` and `src/test/java` folders as well just make sure you add jUnit 4.X to the classpath (if not using Eclipse).
 
