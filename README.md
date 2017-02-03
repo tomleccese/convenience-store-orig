@@ -10,6 +10,8 @@ If you have any questions regarding any part of the exercise or are finished wit
 
 The project is already able to be imported into Eclipse, just use Eclipse to import it as an **Existing Project**. If you use another IDE, you should be able to import the `src/main/java` and `src/test/java` folders as well just make sure you add jUnit 4.X to the classpath (if not using Eclipse).
 
+It's recommended that you include jUnit tests with your assignment.
+
 Good luck!
 
 ## Background
