@@ -20,7 +20,7 @@ BridgePhase is opening up a new convenience store and needs a Point-of-Sale syst
 
 ## Part 1. Inventory System
 
-Create a class `Inventory` that implements the methods in the `IInventory` interface. An `Inventory` contains a list of `Product`. Each `Product` contains `upc` (`String`), `name` (`String`), `wholesalePrice` (`Number`), `retailPrice` (`Number`), and `quantity` (`Number`).  Add standard getter and setters `getName()`, `setName()`, etc to the `Product` class. 
+Create a class `Inventory` that implements the methods in the `IInventory` interface. An `Inventory` contains a list of `Product`. Each `Product` contains `upc` (`String`), `name` (`String`), `wholesalePrice` (`Number` or subclass), `retailPrice` (`Number` or subclass), and `quantity` (`Number` or subclass).  Add standard getter and setters `getName()`, `setName()`, etc to the `Product` class. 
 
 The `IInventory` interfaces supports the following **public** operations:
 
@@ -35,6 +35,9 @@ C123,Milk,2.15,4.50,40
 The `replenish()` method will populate the list of `Product` on the `Inventory`.
 
 2. `List<Product> list()` - returns an unmodifiable `List<Product>` representing the `Product` inside the `Inventory`.
+
+
+* **Note**: Pay attention to what class you'll use to represent prices and quantity...
 
 ## Part 2. Cash Register
 
