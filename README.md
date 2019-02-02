@@ -10,13 +10,13 @@ If you have any questions or need clarifications regarding any part of the exerc
 
 The project is already able to be imported into Eclipse, just use Eclipse to import it as an **Existing Project**. If you use another IDE, you should be able to import the `src/main/java` and `src/test/java` folders as well just make sure you add jUnit 4.X to the classpath (if not using Eclipse).
 
-It's recommended that you include jUnit tests with your assignment.
+It's required that you include jUnit tests with your assignment.
 
 Good luck!
 
 ## Background
 
-BridgePhase is opening up a new convenience store and needs a Point-of-Sale system to control serve as the cash register and inventory system.
+BridgePhase is opening up a new convenience store and needs a Point-of-Sale system to serve as the cash register and inventory system.
 
 ## Part 1. Inventory System
 
@@ -35,7 +35,6 @@ C123,Milk,2.15,4.50,40
 The `replenish()` method will populate the list of `Product` on the `Inventory`.
 
 2. `List<Product> list()` - returns an unmodifiable `List<Product>` representing the `Product` inside the `Inventory`.
-
 
 * **Note**: Pay attention to what class you'll use to represent prices and quantity...
 
@@ -68,7 +67,7 @@ Change: $4.00
 -----------------------------
 ```
 
-## Part 3. Inventory reduction
+## Part 3. Inventory reduction (Optional Part)
 
 The `CashRegister` in Part 2 doesn't decrease the amount of items in the inventory. Add the neccessary logic to the `CashRegister` and `Inventory` classes to make sure that when the customer pays for their goods the `Inventory` is updated to reflect the new amounts.
 
