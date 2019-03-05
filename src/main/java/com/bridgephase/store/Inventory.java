@@ -9,7 +9,7 @@ public class Inventory implements IInventory {
     @Override
     public void replenish(InputStream inputStream) {
     }
-    
+
     @Override
     public List<Product> list() {
         return null;
