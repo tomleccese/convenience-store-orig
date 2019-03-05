@@ -9,6 +9,18 @@ repositories {
     mavenCentral()
 }
 
+sourceSets {
+    referenceTest {
+        java {
+            compileClasspath += main.output + test.output
+            runtimeClasspath += main.output + test.output
+            srcDir file('src/referenceTest/java')
+        }
+        resources {
+            srcDir file('src/referenceTest/resources')
+        }
+    }
+}
 dependencies {
     implementation 'com.google.guava:guava:27.0.1-jre'
     testImplementation 'junit:junit:4.12'
