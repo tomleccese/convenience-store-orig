@@ -1,2 +1,17 @@
 apply plugin: 'java'
 apply plugin: 'eclipse'
+
+repositories {
+  mavenCentral()
+}
+test {
+    useJUnitPlatform()
+	testLogging {
+		events "passed", "skipped", "failed"
+	}
+}
+
+dependencies {
+	testImplementation platform('org.junit:junit-bom:5.4.2')
+	testImplementation('org.junit.jupiter:junit-jupiter')
+}
