@@ -3,10 +3,21 @@ package com.bridgephase.store;
 import static java.util.Objects.requireNonNull;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Currency;
+import java.util.Locale;
 
+/**
+ * Models a product in {@link Inventory}. The {@link #upc} is the key identifier
+ * for a product (i.e. uniquely identifies a product). The {@link #name} is
+ * assumed to not be a key identifier for a product. This means that there may
+ * be two products with the same name but with different upc values.
+ */
 public class Product {
-  // force all big decimals to be scale 2
-  private static final int SCALE = 2;
+  // force all big decimals to be have scale that matches the default fraction
+  // digits for the default locale currency
+  private static final int SCALE = Currency.getInstance(Locale.getDefault()).getDefaultFractionDigits();
+  private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
   private String upc;
   private String name;
@@ -29,6 +40,10 @@ public class Product {
   public Product(Product source) {
     this(requireNonNull(source, "The 'Product source' argument is required; it must not be null").getUpc(),
       source.getName(), source.getWholesalePrice(), source.getRetailPrice(), source.getQuantity());
+  }
+
+  public Product(String upc, String name, double wholesalePrice, double retailPrice, int quantity) {
+    this(upc, name, new BigDecimal(wholesalePrice), new BigDecimal(retailPrice), quantity);
   }
 
   public String getUpc() {
@@ -61,12 +76,12 @@ public class Product {
 
   public void setWholesalePrice(BigDecimal wholesalePrice) {
     this.wholesalePrice = requireNonNull(wholesalePrice,
-      "The 'BigDecimal wholesalePrice' argument is required; it must not be null").setScale(SCALE);
+      "The 'BigDecimal wholesalePrice' argument is required; it must not be null").setScale(SCALE, ROUNDING_MODE);
   }
 
   public void setRetailPrice(BigDecimal retailPrice) {
     this.retailPrice = requireNonNull(retailPrice,
-      "The 'BigDecimal retailPrice' argument is required; it must not be null").setScale(SCALE);
+      "The 'BigDecimal retailPrice' argument is required; it must not be null").setScale(SCALE, ROUNDING_MODE);
   }
 
   public void setQuantity(Integer quantity) {
