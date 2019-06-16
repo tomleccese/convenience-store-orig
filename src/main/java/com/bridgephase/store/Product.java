@@ -1,11 +1,13 @@
 package com.bridgephase.store;
 
-import static java.util.Objects.requireNonNull;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Currency;
 import java.util.Locale;
+
+import com.google.common.base.Objects;
+
+import static com.google.common.base.Preconditions.*;
 
 /**
  * Models a product in {@link Inventory}. The {@link #upc} is the key identifier
@@ -13,32 +15,31 @@ import java.util.Locale;
  * assumed to not be a key identifier for a product. This means that there may
  * be two products with the same name but with different upc values.
  */
-public class Product {
+public final class Product {
   // force all big decimals to be have scale that matches the default fraction
   // digits for the default locale currency
   private static final int SCALE = Currency.getInstance(Locale.getDefault()).getDefaultFractionDigits();
   private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
-  private String upc;
-  private String name;
-  private BigDecimal wholesalePrice;
-  private BigDecimal retailPrice;
-  private Integer quantity;
+  private final String upc;
+  private final String name;
+  private final BigDecimal wholesalePrice;
+  private final BigDecimal retailPrice;
+  private final Integer quantity;
 
   public Product(String upc, String name, BigDecimal wholesalePrice, BigDecimal retailPrice, Integer quantity) {
     super();
-    setUpc(upc);
-    setName(name);
-    setWholesalePrice(wholesalePrice);
-    setRetailPrice(retailPrice);
-    setQuantity(quantity);
-  }
-
-  public Product() {
+    this.upc = checkNotNull(upc, "The 'String upc' argument is required; it must not be null");
+    this.name = checkNotNull(name, "The 'String name' argument is required; it must not be null");
+    this.wholesalePrice = checkNotNull(wholesalePrice,
+      "The 'BigDecimal wholesalePrice' argument is required; it must not be null").setScale(SCALE, ROUNDING_MODE);
+    this.retailPrice = checkNotNull(retailPrice,
+      "The 'BigDecimal retailPrice' argument is required; it must not be null").setScale(SCALE, ROUNDING_MODE);
+    this.quantity = checkNotNull(quantity, "The 'Integer quantity' argument is required; it must not be null");
   }
 
   public Product(Product source) {
-    this(requireNonNull(source, "The 'Product source' argument is required; it must not be null").getUpc(),
+    this(checkNotNull(source, "The 'Product source' argument is required; it must not be null").getUpc(),
       source.getName(), source.getWholesalePrice(), source.getRetailPrice(), source.getQuantity());
   }
 
@@ -64,28 +65,6 @@ public class Product {
 
   public Integer getQuantity() {
     return quantity;
-  }
-
-  public void setUpc(String upc) {
-    this.upc = requireNonNull(upc, "The 'String upc' argument is required; it must not be null");
-  }
-
-  public void setName(String name) {
-    this.name = requireNonNull(name, "The 'String name' argument is required; it must not be null");
-  }
-
-  public void setWholesalePrice(BigDecimal wholesalePrice) {
-    this.wholesalePrice = requireNonNull(wholesalePrice,
-      "The 'BigDecimal wholesalePrice' argument is required; it must not be null").setScale(SCALE, ROUNDING_MODE);
-  }
-
-  public void setRetailPrice(BigDecimal retailPrice) {
-    this.retailPrice = requireNonNull(retailPrice,
-      "The 'BigDecimal retailPrice' argument is required; it must not be null").setScale(SCALE, ROUNDING_MODE);
-  }
-
-  public void setQuantity(Integer quantity) {
-    this.quantity = requireNonNull(quantity, "The 'Integer quantity' argument is required; it must not be null");
   }
 
   @Override
@@ -191,6 +170,27 @@ public class Product {
 
     Product build() {
       return new Product(upc, name, wholesalePrice, retailPrice, quantity);
+    }
+  }
+
+  /**
+   * Creates a new {@link Product} that contains all the same values as the new
+   * Product, except for the quantity which is set to the sum of the old product
+   * quantity and the new product quantity.
+   * 
+   * @param oldValue
+   * @param newValue
+   * @return
+   */
+  public static Product merge(Product oldValue, Product newValue) {
+    checkNotNull(newValue, "The 'Product newValue' argument is required; it must not be null");
+    if (oldValue == null) {
+      return newValue;
+    } else {
+      checkArgument(Objects.equal(oldValue.getUpc(), newValue.getUpc()),
+        "The upc value is required to be the same for both the oldValue and newValue argument: oldValue.upc=%s, newValue.upc=%s");
+      return new Product(newValue.getUpc(), newValue.getName(), newValue.getWholesalePrice(), newValue.getRetailPrice(),
+        oldValue.getQuantity() + newValue.getQuantity());
     }
   }
 }

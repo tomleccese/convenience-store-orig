@@ -18,5 +18,4 @@ dependencies {
 	testImplementation('org.easymock:easymock:4.0.2')
 	
   implementation('com.google.guava:guava:27.1-jre')
-  
 }

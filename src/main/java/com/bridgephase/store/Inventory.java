@@ -1,7 +1,8 @@
 package com.bridgephase.store;
 
+import static java.lang.String.format;
 import static com.google.common.base.Preconditions.checkArgument;
-import static java.util.Objects.requireNonNull;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -9,14 +10,13 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import com.bridgephase.store.interfaces.IInventory;
+import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 
@@ -26,172 +26,256 @@ import com.google.common.collect.ImmutableList;
  * <p>
  * The {@link #replenish(InputStream) replenish} method is used to populate this
  * object with the products
+ * <p>
+ * The {@link #adjustQuantity(String, Integer) adjustQuantity} method is used to
+ * adjust the quantity of a given product (e.g. after completion of sale)
  * 
  * <p>
- * This is a simple in-memory store of products which would likely only be
- * appropriate for dev environments. In a production environment the product
- * store would most likely would be held in a persistent database and the data
- * access layer would manage safe concurrent access to the products.
+ * Note: This inventory is thread-safe.
  */
 public class Inventory implements IInventory {
-  private final Map<String, Product> products = new HashMap<>();
-  private final ProductParser parser = new ProductParser();
 
-  /**
-   * This implementation of replenishment will insert or replace any existing
-   * products in this inventory. Any existing products that are not included in
-   * the replenishment will remain in inventory unchanged.
-   * 
-   * @throws UncheckedIOException if IOException occurs while reading from input
-   *                              Stream
-   */
-  @Override
-  public void replenish(InputStream inputStream) {
-    requireNonNull(inputStream, "The inputSteam argument is required; it must not be null");
-    // not going to close input stream here
-    // it is the responsibility of the caller to close the input stream.
-    final BufferedReader r = new BufferedReader(new InputStreamReader(inputStream));
-    int lineNumber = 0;
-    try {
-      String line;
-      if ((line = r.readLine()) != null) {
-        // first line must be header
-        parser.validateHeader(line);
-        while ((line = r.readLine()) != null) {
-          Product product = parser.parse(lineNumber, line);
-          products.put(product.getUpc(), product);
-          lineNumber++;
-        }
-      }
-    } catch (IOException e) {
-      throw new UncheckedIOException("Error reading input stream: lineNumber=" + lineNumber, e);
-    }
-  }
+	/**
+	 * ConcurrentMap is used so that multiple-threads can update the inventory in a
+	 * thread-safe manner. This allows this inventory can be shared safely between
+	 * multiple cash registers and callers to the replenish methods.
+	 */
+	private final ConcurrentMap<String, Product> products = new ConcurrentHashMap<>();
 
-  /**
-   * To be truly unmodifiable the list should contain unmodifiable (i.e.
-   * immutable) objects or if that is not possible then it must contain a copy of
-   * all the products held in inventory. I have chosen to make Product immutable.
-   * 
-   * @return returns an unmodifiable <code>List</code> of <code>Product</code>
-   *         representing products inside the inventory.
-   */
-  @Override
-  public List<Product> list() {
-    ArrayList<Product> list = new ArrayList<>(this.products.values());
-    return Collections.unmodifiableList(list);
-  }
+	private final ProductParser parser = new ProductParser();
 
-  Optional<Product> find(String upc) {
-    return Optional.ofNullable(products.get(upc));
-  }
+	Inventory(final Product... products) {
+		checkNotNull(products, "The 'Product[] products' argument is required; it must not be null");
+		int i = 0;
+		for (Product product : products) {
+			checkNotNull(product,
+					"All elements in the 'Product[] products' array are required; the element at index %d is null; it must not be null",
+					i);
+			final Product versionedProduct = new Product(product);
+			this.products.merge(product.getUpc(), versionedProduct, Product::merge);
+			i++;
+		}
+	}
 
-  static class ProductParser {
-    @SuppressWarnings("serial")
-    static class ProductParseException extends RuntimeException {
+	/**
+	 * This implementation of replenishment will insert or update any existing
+	 * products in this inventory. Any existing products that are not included in
+	 * the replenishment will remain in inventory unchanged. The quantity on a
+	 * replenishment {@link Product} is {@link Product#merge(Product, Product) added
+	 * to the existing quantity}.
+	 * 
+	 * @see Product#merge(Product, Product)
+	 * @throws UncheckedIOException if IOException occurs while reading from input
+	 *                              Stream
+	 */
+	@Override
+	synchronized public void replenish(InputStream inputStream) {
+		checkNotNull(inputStream, "The inputSteam argument is required; it must not be null");
+		// not going to close input stream here
+		// it is the responsibility of the caller to close the input stream.
+		final BufferedReader r = new BufferedReader(new InputStreamReader(inputStream));
+		int lineNumber = 1;
+		try {
+			// first line is required to be the header (no blank/empty lines allowed before
+			// header)
+			if (parser.readHeader(r.readLine())) {
+				lineNumber++;
+				for (String line; (line = r.readLine()) != null; lineNumber++) {
+					if (line.trim().isEmpty()) {
+						// we'll allow and ignore any blank, empty lines
+						continue;
+					} else {
+						final Product parsed = parser.parse(lineNumber, line);
+						products.merge(parsed.getUpc(), new Product(parsed), Product::merge);
+					}
+				}
+			}
+		} catch (IOException e) {
+			throw new UncheckedIOException("Error reading input stream: lineNumber=" + lineNumber, e);
+		}
+	}
 
-      public ProductParseException(String message, Throwable cause) {
-        super(message, cause);
-      }
+	/**
+	 * To be truly unmodifiable the list should contain unmodifiable (i.e.
+	 * immutable) objects That is why I have chosen to make {@link Product}
+	 * immutable.
+	 * 
+	 * @return returns an unmodifiable <code>List</code> of <code>Product</code>
+	 *         representing products inside the inventory.
+	 */
+	@Override
+	public List<Product> list() {
+		return ImmutableList.copyOf(this.products.values());
+	}
 
-      public ProductParseException(String message) {
-        super(message);
-      }
+	@Override
+	public Optional<Product> find(String upc) {
+		return Optional.ofNullable(products.get(upc));
+	}
 
-      public ProductParseException(Throwable cause) {
-        super(cause);
-      }
-    }
+	@Override
+	synchronized public Optional<Product> adjustQuantity(final String upc, final Integer delta) {
+		checkNotNull(upc, "The 'String upc' argument is required; it must not be null");
+		checkNotNull(delta, "The 'Integer delta' argument is required; it must not be null");
+		return Optional.ofNullable(products.computeIfPresent(upc, (key, oldProduct) -> {
+			return new Product(upc, oldProduct.getName(), oldProduct.getWholesalePrice(), oldProduct.getRetailPrice(),
+					oldProduct.getQuantity() + delta);
+		}));
+	}
 
-    static enum Field {
-      UPC("upc"), NAME("name"), WHOLESALE_PRICE("wholesalePrice"), RETAIL_PRICE("retailPrice"), QUANTITY("quantity");
+	/**
+	 * Handles header line and data line parsing of {@link Inventory}
+	 * {@link Inventory#replenish(InputStream) replenishment}
+	 */
+	static class ProductParser {
+		@SuppressWarnings("serial")
+		static class ProductParseException extends RuntimeException {
 
-      private final int number;
-      private final String headerName;
+			public ProductParseException(String message, Throwable cause) {
+				super(message, cause);
+			}
 
-      Field(String headerName) {
-        this.number = this.ordinal() + 1;
-        this.headerName = headerName;
-      }
+			public ProductParseException(String message) {
+				super(message);
+			}
 
-      public int getNumber() {
-        return number;
-      }
+			public ProductParseException(Throwable cause) {
+				super(cause);
+			}
+		}
 
-      public String getHeaderName() {
-        return headerName;
-      }
-    }
+		static enum Field {
+			UPC("upc"), NAME("name"), WHOLESALE_PRICE("wholesalePrice"), RETAIL_PRICE("retailPrice"), QUANTITY("quantity");
 
-    private final List<Field> fields = ImmutableList.copyOf(Field.values());
+			private final int number;
+			private final String headerName;
 
-    private final Splitter splitter = Splitter.on(',').trimResults();
+			Field(String headerName) {
+				this.number = this.ordinal() + 1;
+				this.headerName = headerName;
+			}
 
-    Product parse(final int lineNumber, final String line) {
-      assert line != null;
-      Product product = new Product();
-      int fieldNum = 0;
-      for (String value : splitter.split(line)) {
-        Field field = fields.get(fieldNum);
-        switch (field) {
-        case UPC:
-          product.setUpc(value);
-          break;
-        case NAME:
-          product.setName(value);
-          break;
-        case WHOLESALE_PRICE:
-          product.setWholesalePrice(parseBigDecimal(lineNumber, field.getNumber(), "wholesale price", value));
-          break;
-        case RETAIL_PRICE:
-          product.setRetailPrice(parseBigDecimal(lineNumber, field.getNumber(), "retail price", value));
-          break;
-        case QUANTITY:
-          product.setQuantity(parseInteger(lineNumber, field.getNumber(), "quantity", value));
-          break;
-        default:
-          throw new IllegalArgumentException("Line contains an unsupported Field: " + field);
-        }
-        fieldNum++;
-      }
-      checkArgument(fieldNum == fields.size(),
-        "Line does not contain the correct number of fields: expected=" + fields.size() + ", actual=" + fieldNum);
-      return product;
-    }
+			public int getNumber() {
+				return number;
+			}
 
-    void validateHeader(String line) {
-      int i = 0;
-      for (String value : splitter.split(line)) {
-        Field field = fields.get(i);
-        if (!field.getHeaderName().equals(value)) {
-          throw new IllegalStateException("Unexpected header: number=" + field.number + ", expectedName="
-            + field.getHeaderName() + ", actualName=" + value);
-        }
-        i++;
-      }
-    }
+			public String getHeaderName() {
+				return headerName;
+			}
+		}
 
-    private BigDecimal parseBigDecimal(int lineNumber, int fieldNumber, String fieldName, String fieldValue) {
-      try {
-        return new BigDecimal(fieldValue);
-      } catch (NumberFormatException e) {
-        throw new ProductParseException(
-          String.format("Error parsing BigDecimal from field #%d (%s): lineNumber=%d, fieldValue=%s", fieldNumber,
-            fieldName, lineNumber, fieldValue),
-          e);
-      }
-    }
+		private final List<Field> fields = ImmutableList.copyOf(Field.values());
+		private final String expectedHeader = Joiner.on(',')
+				.join(Arrays.stream(Field.values()).map(e -> e.headerName).toArray());
 
-    private Integer parseInteger(int lineNumber, int fieldNumber, String fieldName, String fieldValue) {
-      try {
-        return Integer.valueOf(fieldValue);
-      } catch (NumberFormatException e) {
-        throw new ProductParseException(
-          String.format("Error parsing Integer from field #%d (%s): lineNumber=%d, fieldValue=%s", fieldNumber,
-            fieldName, lineNumber, fieldValue),
-          e);
-      }
-    }
+		/**
+		 * The {@link Splitter} used for parsing product data lines
+		 */
+		private final Splitter splitter = Splitter.on(',').trimResults();
 
-  }
+		/**
+		 * Parses the given data line of text into a {@link Product}
+		 * 
+		 * @param lineNumber the line number
+		 * @param line       the data line of text
+		 * @return the Product parsed from the given data line of text
+		 */
+		Product parse(final int lineNumber, final String line) {
+			checkNotNull(line, "The 'String line' argument is required; it must not be null");
+			Product.Builder product = new Product.Builder();
+			int fieldNum = 0;
+			for (String value : splitter.split(line)) {
+				if (fieldNum < fields.size()) {
+					Field field = fields.get(fieldNum);
+					switch (field) {
+					case UPC:
+						product.withUpc(value);
+						break;
+					case NAME:
+						product.withName(value);
+						break;
+					case WHOLESALE_PRICE:
+						product.withWholesalePrice(parseBigDecimal(lineNumber, field.getNumber(), "wholesale price", value));
+						break;
+					case RETAIL_PRICE:
+						product.withRetailPrice(parseBigDecimal(lineNumber, field.getNumber(), "retail price", value));
+						break;
+					case QUANTITY:
+						product.withQuantity(parseInteger(lineNumber, field.getNumber(), "quantity", value));
+						break;
+					default:
+						throw new IllegalArgumentException("Line contains an unsupported Field: " + field);
+					}
+				}
+				fieldNum++;
+			}
+			checkArgument(fieldNum == fields.size(),
+					"Line does not contain the correct number of fields: expected=" + fields.size() + ", actual=" + fieldNum);
+			return product.build();
+		}
+
+		/**
+		 * Reads the given line and validates that it is a proper header line
+		 * @param line a header line
+		 * @return false if line is null else true if line is the header
+		 * @throws IllegalArgumentException if line is not null and does not match the
+		 *                                  expected header line
+		 */
+		boolean readHeader(String line) {
+			if (line == null) {
+				return false;
+			} else {
+				validateHeader(line);
+				return true;
+			}
+		}
+
+		/**
+		 * Validates that the line of input is a header line as defined in
+		 * {@link #expectedHeader}
+		 * 
+		 * @param line a line of input
+		 * @throws NullPointerException     if input line is null
+		 * @throws IllegalArgumentException if input line is not a valid header line
+		 */
+		void validateHeader(String line) {
+			checkNotNull(line);
+			int i = 0;
+			for (String value : splitter.split(line)) {
+				if (i < fields.size()) {
+					Field field = fields.get(i);
+					checkArgument(field.getHeaderName().equals(value),
+							"Unexpected header field: number=%s, expectedName=%s, actualName=%s, expectedHeader=%s, actualHeader=%s",
+							field.number, field.getHeaderName(), value, expectedHeader, line);
+				}
+				i++;
+			}
+			checkArgument(i == fields.size(), format(
+					"Unexpected header: field count mismatch: expected %d fields but got %d fields instead: expectedHeader=%s, actualHeader=%s",
+					fields.size(), i, expectedHeader, line));
+		}
+
+		private BigDecimal parseBigDecimal(int lineNumber, int fieldNumber, String fieldName, String fieldValue) {
+			try {
+				return new BigDecimal(fieldValue);
+			} catch (NumberFormatException e) {
+				throw new ProductParseException(
+						String.format("Error parsing BigDecimal from field #%d (%s): lineNumber=%d, fieldValue=%s", fieldNumber,
+								fieldName, lineNumber, fieldValue),
+						e);
+			}
+		}
+
+		private Integer parseInteger(int lineNumber, int fieldNumber, String fieldName, String fieldValue) {
+			try {
+				return Integer.valueOf(fieldValue);
+			} catch (NumberFormatException e) {
+				throw new ProductParseException(
+						String.format("Error parsing Integer from field #%d (%s): lineNumber=%d, fieldValue=%s", fieldNumber,
+								fieldName, lineNumber, fieldValue),
+						e);
+			}
+		}
+
+	}
 }

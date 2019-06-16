@@ -8,13 +8,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
 import java.text.NumberFormat;
-import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.bridgephase.store.interfaces.IInventory;
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 class CashRegisterTest {
   private CashRegister register;
@@ -22,18 +23,15 @@ class CashRegisterTest {
   private IInventory inventory;
   private Object[] mocks;
 
-  private List<Product> products;
+  private Map<String, Product> products;
 
   @BeforeEach
   private void setup() {
     inventory = createMock(IInventory.class);
-    products = ImmutableList.of(new Product("A123", "Apple", 0.50, 1.00, 100),
-      new Product("B234", "Peach", 0.35, 0.75, 200), new Product("C123", "Milk", 2.15, 4.50, 40));
+    products = ImmutableMap.of("A123", new Product("A123", "Apple", 0.50, 1.00, 100), "B234",
+      new Product("B234", "Peach", 0.35, 0.75, 200), "C123", new Product("C123", "Milk", 2.15, 4.50, 40));
     mocks = new Object[] { inventory };
-    expect(inventory.list()).andReturn(products);
-    replay(mocks);
     register = new CashRegister(inventory);
-    verify(mocks);
   }
 
   @Test
@@ -78,9 +76,12 @@ class CashRegisterTest {
   @Test
   void testScanProductNotInInventory() {
     register.beginTransaction();
+    expect(inventory.find("P9889")).andReturn(Optional.ofNullable(products.get("P9889")));
+    replay(mocks);
     assertEquals(false, register.scan("P9889"),
       "Expected register.scan to return false when scanning a upc that is not in inventory");
     assertEquals(bigdec(0.00), register.getTotal());
+    verify(mocks);
   }
 
   @Test
@@ -89,6 +90,14 @@ class CashRegisterTest {
 
     // verify that transaction total is 0.00
     assertEquals(bigdec(0.00), register.getTotal());
+
+    expect(inventory.find("A123")).andReturn(Optional.ofNullable(products.get("A123")));
+    expect(inventory.find("A123")).andReturn(Optional.ofNullable(products.get("A123")));
+    expect(inventory.find("B234")).andReturn(Optional.ofNullable(products.get("B234")));
+    expect(inventory.find("P9889")).andReturn(Optional.ofNullable(products.get("P9889")));
+    expect(inventory.adjustQuantity("A123", -2)).andReturn(Optional.empty());
+    expect(inventory.adjustQuantity("B234", -1)).andReturn(Optional.empty());
+    replay(mocks);
 
     // add one A123 product
     assertEquals(true, register.scan("A123"),
@@ -111,7 +120,8 @@ class CashRegisterTest {
     // and verify that the total has not changed
     assertEquals(bigdec(2.75), register.getTotal());
 
-    assertEquals(bigdec(0.25), register.pay(bigdec(3.00)));
+    register.pay(bigdec(3));
+    
     assertEquals(bigdec(2.75), register.getTotal());
 
     final String expectedReceipt;
@@ -140,7 +150,7 @@ class CashRegisterTest {
       actualReceipt = out.toString();
     }
     assertEquals(expectedReceipt, actualReceipt);
-
+    verify(mocks);
   }
 
   @Test
@@ -150,6 +160,12 @@ class CashRegisterTest {
     // verify that transaction total is 0.00
     assertEquals(bigdec(0.00), register.getTotal());
 
+    expect(inventory.find("A123")).andReturn(Optional.ofNullable(products.get("A123")));
+    expect(inventory.find("A123")).andReturn(Optional.ofNullable(products.get("A123")));
+    expect(inventory.find("B234")).andReturn(Optional.ofNullable(products.get("B234")));
+    expect(inventory.find("P9889")).andReturn(Optional.ofNullable(products.get("P9889")));
+    replay(mocks);
+    
     // add one A123 product
     assertEquals(true, register.scan("A123"),
       "Expected register.scan to return true when scanning a upc that is in inventory");
@@ -172,6 +188,7 @@ class CashRegisterTest {
     assertEquals(bigdec(2.75), register.getTotal());
 
     assertThrows(InsufficientFundsException.class, () -> register.pay(bigdec(2.00)));
+    verify(mocks);
   }
 
   @Test

@@ -1,5 +1,6 @@
 package com.bridgephase.store;
 
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 
 class TestUtils {
@@ -15,4 +16,15 @@ class TestUtils {
     return BigDecimal.valueOf(Math.round(d * 100), 2);
   }
 
+  static byte[] bytes(String... lines) {
+    StringBuilder b = new StringBuilder();
+    for (String line : lines) {
+      b.append(line).append(System.lineSeparator());
+    }
+    return b.toString().getBytes();
+  }
+
+  static ByteArrayInputStream bais(String... lines) {
+    return new ByteArrayInputStream(bytes(lines));
+  }
 }

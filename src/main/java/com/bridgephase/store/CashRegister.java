@@ -9,13 +9,11 @@ import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Map.Entry;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import com.bridgephase.store.interfaces.IInventory;
-import com.google.common.base.Preconditions;
+import static com.google.common.base.Preconditions.*;
 
 /**
  * Models a Cash Register. One cash register instance can only have one
@@ -47,13 +45,31 @@ public class CashRegister {
 
       LineItem(String name, BigDecimal price, Integer quantity) {
         super();
-        this.name = Objects.requireNonNull(name, "name");
-        this.price = Objects.requireNonNull(price, "price");
-        this.quantity = Objects.requireNonNull(quantity, "quantity");
+        this.name = checkNotNull(name, "The 'String name' argument is required; it must not be null");
+        this.price = checkNotNull(price, "The 'BigDecimal price' argument is required; it must not be null");
+        this.quantity = checkNotNull(quantity, "The 'Integer quantity' argument is required; it must not be null");
       }
 
       BigDecimal extendedPrice() {
         return price.multiply(BigDecimal.valueOf(this.quantity));
+      }
+
+      /**
+       * Creates a new {@link LineItem} that contains all the same values as the new
+       * LineItem, except for the quantity which is set to the sum of the old quantity
+       * and the new quantity.
+       * 
+       * @param oldValue
+       * @param newValue
+       * @return
+       */
+      private static LineItem merge(LineItem oldValue, LineItem newValue) {
+        checkNotNull(newValue, "The 'LineItem newValue' argument is required; it must not be null");
+        if (oldValue == null) {
+          return newValue;
+        } else {
+          return new LineItem(newValue.name, newValue.price, oldValue.quantity + newValue.quantity);
+        }
       }
     }
 
@@ -99,17 +115,19 @@ public class CashRegister {
      * @throws IllegalArgumentException if the product is null
      */
     boolean add(Product product, int quantity) {
-      Preconditions.checkState(state != State.PAID, "Cannot add product to a paid transaction");
-      Preconditions.checkArgument(product != null, "The 'Product product' argument is required; it must not be null");
-      final LineItem item = lineItems.get(product.getUpc());
-      if (item == null) {
-        lineItems.put(product.getUpc(), new LineItem(product.getName(), product.getRetailPrice(), quantity));
-      } else {
-        // update the the quantity of the product in this transaction
-        lineItems.put(product.getUpc(),
-          new LineItem(product.getName(), product.getRetailPrice(), item.quantity + quantity));
-      }
-      return true;
+      checkState(state != State.PAID, "Cannot add product to a paid transaction");
+      checkArgument(product != null, "The 'Product product' argument is required; it must not be null");
+      final LineItem lineItem = lineItems.merge(product.getUpc(),
+        new LineItem(product.getName(), product.getRetailPrice(), quantity), LineItem::merge);
+      // the spec says to return false if quantity scanned exceeds the quantity of
+      // product in stock,
+      // however I have decided to add it to the transaction regardless because this
+      // is a convenience store
+      // and people bring the products to the register to be scanned so regardless of
+      // what the inventory is saying
+      // if someone has an item in-hand then they will want to buy it and the seller
+      // will want to sell it too.
+      return (lineItem.quantity > product.getQuantity()) ? false : true;
     }
 
     /**
@@ -124,9 +142,8 @@ public class CashRegister {
      *                                    transaction amount
      */
     BigDecimal pay(BigDecimal amountPaid) {
-      Preconditions.checkState(state != State.PAID, "Cannot pay for a transaction that has already been paid");
-      Preconditions.checkArgument(amountPaid != null,
-        "The 'BigDecimal amountPaid' argument is required; it must not be null");
+      checkState(state != State.PAID, "Cannot pay for a transaction that has already been paid");
+      checkArgument(amountPaid != null, "The 'BigDecimal amountPaid' argument is required; it must not be null");
       final BigDecimal total = getTotal();
       if (amountPaid.compareTo(total) < 0) {
         throw new InsufficientFundsException(String
@@ -150,8 +167,8 @@ public class CashRegister {
      * @throws IllegalArgumentException if the output stream is null
      */
     void printReceipt(OutputStream out) {
-      Preconditions.checkState(state == State.PAID, "Cannot print a receipt for an unpaid transaction");
-      Preconditions.checkArgument(out != null, "The 'OutputStream out' argument is required; it must not be null");
+      checkState(state == State.PAID, "Cannot print a receipt for an unpaid transaction");
+      checkArgument(out != null, "The 'OutputStream out' argument is required; it must not be null");
       final NumberFormat currencyFormat = NumberFormat.getCurrencyInstance();
       final BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(out));
       try {
@@ -166,8 +183,8 @@ public class CashRegister {
           @SuppressWarnings("unused")
           String upc = entry.getKey();
           LineItem lineItem = entry.getValue();
-          writer.append(String.format("%d %s @ %s: %s", lineItem.quantity, lineItem.name, currencyFormat.format(lineItem.price),
-            currencyFormat.format(lineItem.extendedPrice())));
+          writer.append(String.format("%d %s @ %s: %s", lineItem.quantity, lineItem.name,
+            currencyFormat.format(lineItem.price), currencyFormat.format(lineItem.extendedPrice())));
           writer.newLine();
         }
         writer.append("-----------------------------");
@@ -207,35 +224,56 @@ public class CashRegister {
           .orElse(BigDecimal.valueOf(0, 2));
     }
 
+    /**
+     * @return the amount paid
+     */
     BigDecimal getPaid() {
       return state == State.PAID ? paid : BigDecimal.valueOf(0, 2);
     }
 
+    /**
+     * @return the change returned from payment (i.e. paid - total)
+     */
     BigDecimal getChange() {
       return state == State.PAID ? change : BigDecimal.valueOf(0, 2);
     }
 
+    /**
+     * @param inventory
+     */
+    void updateInventory(IInventory inventory) {
+      for (Entry<String, LineItem> entry : lineItems.entrySet()) {
+        final String upc = entry.getKey();
+        final int delta = 0 - entry.getValue().quantity;
+        final Optional<Product> product = inventory.adjustQuantity(upc, delta);
+        if (product.isPresent() && product.get().getQuantity() <= 0) {
+          // TODO: time to replenish inventory of this product - e.g. send OutOfStock message to
+          // Purchasing queue
+        }
+      }
+    }
   }
 
-  private final Map<String, Product> products;
-
   private Optional<Transaction> transaction = Optional.empty();
+  private final IInventory inventory;
 
   public CashRegister(IInventory inventory) {
     super();
-    this.products = inventory.list().stream().collect(Collectors.toMap(Product::getUpc, p -> p));
+    this.inventory = inventory;
   }
 
   public void beginTransaction() {
-    Preconditions.checkState(transaction.isEmpty() || transaction.get().isPaid(), "Transaction has already been started");
+    checkState(!transaction.isPresent() || transaction.get().isPaid(), "Transaction has already been started");
+    transaction.ifPresent((transaction) -> {
+      // TODO: we really should persist this paid transaction somewhere
+    });
     transaction = Optional.of(new Transaction());
   }
 
   public boolean scan(final String upc) {
-    Preconditions.checkState(!transaction.isEmpty(),
-      "Transaction has not been started; start transaction before scanning products");
-    Preconditions.checkArgument(upc != null, "The 'String upc' argument is required; it must not be null");
-    final Product product = products.get(upc);
+    checkState(transaction.isPresent(), "Transaction has not been started; start transaction before scanning products");
+    checkArgument(upc != null, "The 'String upc' argument is required; it must not be null");
+    final Product product = inventory.find(upc).orElse(null);
     if (product != null) {
       // add 1 of this product to the transaction
       return transaction.get().add(product, 1);
@@ -246,7 +284,7 @@ public class CashRegister {
   }
 
   public BigDecimal getTotal() {
-    Preconditions.checkState(!transaction.isEmpty(), "Transaction has not been started");
+    checkState(transaction.isPresent(), "Transaction has not been started");
     return transaction.get().getTotal();
   }
 
@@ -261,9 +299,12 @@ public class CashRegister {
    *                                  total transaction amount
    */
   public BigDecimal pay(BigDecimal amountPaid) {
-    Preconditions.checkState(!transaction.isEmpty(),
+    checkState(transaction.isPresent(),
       "Transaction has not been started; cannot pay for a transaction that has not been started");
-    return transaction.get().pay(amountPaid);
+    final Transaction transaction = this.transaction.get();
+    final BigDecimal change = transaction.pay(amountPaid);
+    transaction.updateInventory(inventory);
+    return change;
   }
 
   /**
