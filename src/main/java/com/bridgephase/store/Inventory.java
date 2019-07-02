@@ -117,10 +117,15 @@ public class Inventory implements IInventory {
 	synchronized public Optional<Product> adjustQuantity(final String upc, final Integer delta) {
 		checkNotNull(upc, "The 'String upc' argument is required; it must not be null");
 		checkNotNull(delta, "The 'Integer delta' argument is required; it must not be null");
-		return Optional.ofNullable(products.computeIfPresent(upc, (key, oldProduct) -> {
+		final Optional<Product> product = Optional.ofNullable(products.computeIfPresent(upc, (key, oldProduct) -> {
 			return new Product(upc, oldProduct.getName(), oldProduct.getWholesalePrice(), oldProduct.getRetailPrice(),
 					oldProduct.getQuantity() + delta);
 		}));
+    if (product.isPresent() && product.get().getQuantity() <= 0) {
+      // TODO: time to replenish inventory of this product - e.g. send OutOfStock message to
+      // Purchasing queue
+    }
+    return product;
 	}
 
 	/**
